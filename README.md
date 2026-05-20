@@ -13,7 +13,7 @@ A Python package for fitting electron density (ne) and temperature (Te) pedestal
 
 **C-Mod** data is fetched directly from the MDS+ tree using the `MDSplus` Python package. You must be on a **PSFC workstation** for this to work.
 
-**DIII-D** data is fetched using `omfit_classes.omfit_mds`, which connects to the DIII-D MDS+ server. You must be on the **DIII-D cluster** for this to work, and `omfit_classes` must be available — run `module load omfit/unstable` before launching Python. DIII-D equilibrium (geqdsk) files are downloaded and cached locally in a folder called `temporary_eqdsk_files/`.
+**DIII-D** data is fetched using `omfit_classes`, which connects to the DIII-D MDS+ server. You must be on the **DIII-D cluster** for this to work, and `omfit_classes` must be available. Usually, this can be accessed by running `module load omfit/unstable` in the terminal at the start of the session.
 
 ## Repository structure
 
@@ -59,7 +59,7 @@ result = master_fit(
     device = 'cmod',       # or 'd3d'
     t_min  = 900,          # ms
     t_max  = 1400,         # ms
-    mode   = 'per_slice',  # or 'time_window' for a single pooled fit
+    mode   = 'per_slice',  # or 'time_window' if you want to just fit once to all the data in the time window.
     enforce_mtanh      = True,
     shift_to_2pt_model = True,
     plot               = True,
