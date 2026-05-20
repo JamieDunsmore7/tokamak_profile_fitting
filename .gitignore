@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Cached equilibrium files generated at runtime
+**/temporary_eqdsk_files/
+
+# Editor / OS
+.DS_Store
+*.swp
+*~
