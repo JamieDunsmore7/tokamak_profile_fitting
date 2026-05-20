@@ -9,6 +9,14 @@ A Python package for fitting electron density (ne) and temperature (Te) pedestal
 - Optional post-fit shift of the psi axis to align the separatrix Te with a 2-point model prediction
 - Option to fit an exponential decay to the points in the scrape-off-layer, for density/temperature decay length analysis
 
+## Dependencies
+
+**C-Mod fits require `eqtools`**, which is used to convert R_mid coordinates to normalised psi. Install it with:
+
+```bash
+pip install eqtools
+```
+
 ## Data access requirements
 
 **C-Mod** data is fetched directly from the MDS+ tree using the `MDSplus` Python package. You must be on a **PSFC workstation** for this to work.

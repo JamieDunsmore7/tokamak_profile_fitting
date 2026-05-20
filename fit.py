@@ -167,9 +167,18 @@ def master_fit(
         psi_te, te, te_err = psi_t.copy(), te_t.copy(), te_err_t.copy()
         psi_ne, ne, ne_err = psi_t.copy(), ne_t.copy(), ne_err_t.copy()
         if add_sol_zero_flag:
-            edge_mask = psi_t > 0.8
-            psi_te, te, te_err = add_sol_zero(psi_te[edge_mask], te[edge_mask], te_err[edge_mask])
-            psi_ne, ne, ne_err = add_sol_zero(psi_ne[edge_mask], ne[edge_mask], ne_err[edge_mask])
+            edge_sel = psi_t > 0.8
+            core_sel = ~edge_sel
+            # Add a zero anchor in the SOL to edge data only, then recombine
+            # with core — matching the original repo (functions_fit_1D.py:200-210)
+            psi_te_e, te_e, te_err_e = add_sol_zero(psi_te[edge_sel], te[edge_sel], te_err[edge_sel])
+            psi_te = np.concatenate([psi_te[core_sel], psi_te_e])
+            te     = np.concatenate([te[core_sel],     te_e])
+            te_err = np.concatenate([te_err[core_sel], te_err_e])
+            psi_ne_e, ne_e, ne_err_e = add_sol_zero(psi_ne[edge_sel], ne[edge_sel], ne_err[edge_sel])
+            psi_ne = np.concatenate([psi_ne[core_sel], psi_ne_e])
+            ne     = np.concatenate([ne[core_sel],     ne_e])
+            ne_err = np.concatenate([ne_err[core_sel], ne_err_e])
 
         if set_min_errorbar:
             te_err = np.maximum(te_err, np.maximum(min_te_err, te * 0.05))
@@ -420,6 +429,8 @@ def _fit_time_window(slices, psi_grid, fit_func, n_params, enforce_mtanh,
     ne_pool     = np.concatenate([sl['ne']     for sl in aligned_slices])
     ne_err_pool = np.concatenate([sl['ne_err'] for sl in aligned_slices])
 
+    t_min_w  = int(slices[0]['time_ms'])
+    t_max_w  = int(slices[-1]['time_ms'])
     mean_t   = float(np.mean([sl['time_ms'] for sl in slices]))
 
     te_profile, te_chi, te_type, _ = _fit_one_profile(
@@ -443,10 +454,10 @@ def _fit_time_window(slices, psi_grid, fit_func, n_params, enforce_mtanh,
 
     if plot and te_profile is not None:
         _plot_fit(psi_grid, psi_te_pool, te_pool, te_err_pool,
-                  te_profile, te_chi, mean_t, 0.0, 'Te (eV)')
+                  te_profile, te_chi, f'{t_min_w}–{t_max_w} ms', 0.0, 'Te (eV)')
         if ne_profile is not None:
             _plot_fit(psi_grid, psi_ne_pool, ne_pool, ne_err_pool,
-                      ne_profile, ne_chi, mean_t, 0.0, 'ne (m$^{-3}$)')
+                      ne_profile, ne_chi, f'{t_min_w}–{t_max_w} ms', 0.0, 'ne (m$^{-3}$)')
 
     result = dict(
         psi_grid       = psi_grid,
@@ -619,17 +630,21 @@ def _monte_carlo_std(psi, values, errors, psi_grid,
 # ---------------------------------------------------------------------------
 
 def _plot_fit(psi_grid, psi_raw, values_raw, errors_raw,
-              fitted, chi_sq, time_ms, shift, ylabel):
+              fitted, chi_sq, time_label, shift, ylabel):
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.errorbar(psi_raw + shift, values_raw, yerr=errors_raw,
                 fmt='o', mfc='white', color='steelblue', alpha=0.7, label='Data')
     ax.plot(psi_grid, fitted, color='crimson', linewidth=2,
             label=rf'Fit  $\chi^2_\nu={chi_sq:.2f}$')
     ax.axvline(1.0, color='black', linestyle='--', alpha=0.5,
-               label='Separatrix' + (f' (shift={shift:+.4f})' if shift else ''))
+               label=f'Separatrix (2pt model, shift={shift:+.4f})' if shift else 'Separatrix')
+    if shift:
+        ax.axvline(1.0 - shift, color='purple', linestyle='--', alpha=0.5,
+                   label='Separatrix (unmapped)')
     ax.set_xlabel(r'$\psi_N$')
     ax.set_ylabel(ylabel)
-    ax.set_title(f't = {int(time_ms)} ms')
+    t_str = time_label if isinstance(time_label, str) else f'{int(time_label)} ms'
+    ax.set_title(f't = {t_str}')
     ax.legend(fontsize=8)
     ax.grid(linestyle='--', alpha=0.3)
     plt.tight_layout()

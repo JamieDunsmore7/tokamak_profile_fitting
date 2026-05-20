@@ -52,7 +52,6 @@ def add_sol_zero(psi, values, errors, psi_sol=1.05):
     psi = np.append(psi, psi_sol)
     values = np.append(values, 0.0)
     errors = np.append(errors, 2*np.mean(errors))
-    breakpoint()
     return psi, values, errors
 
 

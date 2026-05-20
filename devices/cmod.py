@@ -12,6 +12,7 @@ Also provides scale_to_tci(shot, times_ms, ne_core), which is C-Mod specific.
 import numpy as np
 import MDSplus
 import eqtools
+import eqtools.CModEFIT
 from scipy.interpolate import interp1d
 
 from ..utils import smooth
