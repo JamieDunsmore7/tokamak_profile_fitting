@@ -80,13 +80,13 @@ ne_times    = result['ne_times_ms']
 | `mode` | `'per_slice'` | `'per_slice'` or `'time_window'` |
 | `core_order` | `3` | polynomial order in the core region (0–3) |
 | `sol_order` | `0` | polynomial order in the SOL (0–2) |
-| `enforce_mtanh` | `True` | if False, falls back to cubic when mtanh fails |
+| `enforce_mtanh` | `True` | if True, will always choose mtanh fit if it convereges. If false, will choose lowest chi squared between the cubic and the mtanh fit |
 | `shift_to_2pt_model` | `False` | shift psi so separatrix Te matches 2-point model |
-| `scale_to_tci` | `False` | (C-Mod only) scale core Thomson ne to TCI interferometry |
+| `scale_to_tci` | `False` | (C-Mod only) scale core Thomson ne to line-integrated measurements from the interferometry |
 | `plot` | `False` | plot each fit as it is produced |
 | `return_raw_data` | `False` | include processed raw data in the result dict |
 
-### SOL extension
+### Example of SOL fitting
 
 ```python
 import numpy as np
