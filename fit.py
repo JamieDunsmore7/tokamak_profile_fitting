@@ -49,6 +49,7 @@ def master_fit(
     add_sol_zero_flag  = True,
     use_edge_chi_squared = False,
     plot               = False,
+    debug_plot         = False,
     return_raw_data    = False,
     return_errorbars   = False,
     psi_grid           = None,
@@ -203,7 +204,8 @@ def master_fit(
         enforce_mtanh=enforce_mtanh, use_edge_chi_squared=use_edge_chi_squared,
         set_te_floor=set_te_floor, set_ne_floor=set_ne_floor,
         shift_to_2pt_model=shift_to_2pt_model, dev=dev, shot=shot,
-        plot=plot, return_raw_data=return_raw_data, return_errorbars=return_errorbars,
+        plot=plot, debug_plot=debug_plot,
+        return_raw_data=return_raw_data, return_errorbars=return_errorbars,
     )
 
     if mode == 'per_slice':
@@ -221,7 +223,7 @@ def master_fit(
 def _fit_per_slice(slices, psi_grid, fit_func, n_params, enforce_mtanh,
                    use_edge_chi_squared, set_te_floor, set_ne_floor,
                    shift_to_2pt_model, dev, shot,
-                   plot, return_raw_data, return_errorbars):
+                   plot, debug_plot, return_raw_data, return_errorbars):
 
     te_times, te_profiles, te_chisq, te_types = [], [], [], []
     ne_times, ne_profiles, ne_chisq, ne_types = [], [], [], []
@@ -238,14 +240,14 @@ def _fit_per_slice(slices, psi_grid, fit_func, n_params, enforce_mtanh,
             psi=sl['psi_te'], values=sl['te'], errors=sl['te_err'],
             psi_grid=psi_grid, fit_func=fit_func, n_params=n_params,
             enforce_mtanh=enforce_mtanh, use_edge_chi_squared=use_edge_chi_squared,
-            profile_type='te', last_params=last_te_params,
+            profile_type='te', last_params=last_te_params, debug_plot=debug_plot,
         )
 
         ne_profile, ne_chi, ne_type, last_ne_params = _fit_one_profile(
             psi=sl['psi_ne'], values=sl['ne'], errors=sl['ne_err'],
             psi_grid=psi_grid, fit_func=fit_func, n_params=n_params,
             enforce_mtanh=enforce_mtanh, use_edge_chi_squared=use_edge_chi_squared,
-            profile_type='ne', last_params=last_ne_params,
+            profile_type='ne', last_params=last_ne_params, debug_plot=debug_plot,
         )
 
         if te_profile is None and ne_profile is None:
@@ -355,7 +357,7 @@ def _align_slice_psi(sl, dev, shot):
     te_err_outer = sl['te_err'][outer]
 
     if len(psi_outer) < 5:
-        return sl
+        return sl, 0.0
 
     te_max = float(np.max(te_outer[te_outer > 0])) if np.any(te_outer > 0) else 100.0
 
@@ -383,12 +385,12 @@ def _align_slice_psi(sl, dev, shot):
             continue
 
     if te_params is None:
-        return sl
+        return sl, 0.0
 
     try:
         te_sep = dev.get_Te_sep(shot, time_ms)
     except Exception:
-        return sl
+        return sl, 0.0
 
     fine_psi = np.linspace(float(np.min(psi_outer)), float(np.max(psi_outer)), 100)
     te_fit   = Osborne_Tanh_linear(fine_psi, *te_params)
@@ -396,7 +398,7 @@ def _align_slice_psi(sl, dev, shot):
 
 
     if shift == 0.0:
-        return sl
+        return sl, 0.0
 
     sl = dict(sl)
     for key in ('psi_te', 'psi_ne'):
@@ -404,23 +406,26 @@ def _align_slice_psi(sl, dev, shot):
         arr[arr > 0.8] += shift
         sl[key] = arr
 
-    return sl
+    return sl, shift
 
 
 def _fit_time_window(slices, psi_grid, fit_func, n_params, enforce_mtanh,
                      use_edge_chi_squared, set_te_floor, set_ne_floor,
                      shift_to_2pt_model, dev, shot,
-                     plot, return_raw_data, return_errorbars):
+                     plot, debug_plot, return_raw_data, return_errorbars):
 
     # When shift_to_2pt_model is requested, align each slice individually
     # before pooling so the pedestal sits at a consistent psi position.
     # This matches the original code which shifted per-slice raw data before
     # pooling rather than shifting the fitted profile afterwards.
     aligned_slices = []
+    slice_shifts   = []
     for sl in slices:
         if shift_to_2pt_model:
-            sl = _align_slice_psi(sl, dev, shot)
+            sl, s = _align_slice_psi(sl, dev, shot)
+            slice_shifts.append(s)
         aligned_slices.append(sl)
+    mean_psi_shift = float(np.mean(slice_shifts)) if slice_shifts else 0.0
 
     psi_te_pool = np.concatenate([sl['psi_te'] for sl in aligned_slices])
     te_pool     = np.concatenate([sl['te']     for sl in aligned_slices])
@@ -437,14 +442,14 @@ def _fit_time_window(slices, psi_grid, fit_func, n_params, enforce_mtanh,
         psi=psi_te_pool, values=te_pool, errors=te_err_pool,
         psi_grid=psi_grid, fit_func=fit_func, n_params=n_params,
         enforce_mtanh=enforce_mtanh, use_edge_chi_squared=use_edge_chi_squared,
-        profile_type='te',
+        profile_type='te', debug_plot=debug_plot,
     )
 
     ne_profile, ne_chi, ne_type, _ = _fit_one_profile(
         psi=psi_ne_pool, values=ne_pool, errors=ne_err_pool,
         psi_grid=psi_grid, fit_func=fit_func, n_params=n_params,
         enforce_mtanh=enforce_mtanh, use_edge_chi_squared=use_edge_chi_squared,
-        profile_type='ne',
+        profile_type='ne', debug_plot=debug_plot,
     )
 
     if set_te_floor is not None and te_profile is not None:
@@ -461,6 +466,7 @@ def _fit_time_window(slices, psi_grid, fit_func, n_params, enforce_mtanh,
 
     result = dict(
         psi_grid       = psi_grid,
+        psi_shift      = mean_psi_shift,
         mode           = 'time_window',
         te_times_ms    = np.array([mean_t]),
         te_profiles    = np.array([te_profile]) if te_profile is not None
@@ -490,7 +496,7 @@ def _fit_time_window(slices, psi_grid, fit_func, n_params, enforce_mtanh,
 def _fit_one_profile(psi, values, errors,
                      psi_grid, fit_func, n_params,
                      enforce_mtanh, use_edge_chi_squared,
-                     profile_type, last_params=None):
+                     profile_type, last_params=None, debug_plot=False):
     """Fit one profile (Te or ne) with mtanh and optionally cubic.
 
     Returns (profile_on_grid, chi_squared, fit_type_str, updated_last_params).
@@ -520,6 +526,7 @@ def _fit_one_profile(psi, values, errors,
             [1.02123755e+00, 5.02744526e-02, 2.54219267e+00, -9.99999694e-04, 2.58724602e-02, -2.32961078e-03,  4.20279037e-05],
             # D3D
             [0.99, 0.04, 1.0, 0.05, 0.0, 0.0, 0.0],
+            [0.99, 0.04, 0.3, 0.05, 0.0, 0.0, 0.0],
         ]
     else:
         hardcoded = [
@@ -542,6 +549,24 @@ def _fit_one_profile(psi, values, errors,
     if last_params is not None:
         guesses.insert(0, np.array(last_params))
 
+    # Clamp all guesses to the parameter bounds.  Hardcoded C-Mod/D3D values
+    # have c2 (pedestal top) much higher than D3D data, putting them outside
+    # the ub[2]=max_val bound and causing curve_fit to raise immediately.
+    lb_arr = np.array(lb)
+    ub_arr = np.array(ub)
+    guesses = [np.clip(g, lb_arr, ub_arr) for g in guesses]
+
+    # Prepend data-adaptive guesses with c2 tuned to the actual data maximum
+    # so the optimizer starts from a physically reasonable point.
+    c2_est = max_val * 0.85
+    c3_est = max_val * 0.02
+    for _c0, _c1 in [(0.99, 0.04), (0.98, 0.04), (0.99, 0.05), (1.00, 0.03)]:
+        g = np.zeros(n_params)
+        g[0] = _c0; g[1] = _c1; g[2] = c2_est
+        if n_params > 3:
+            g[3] = c3_est
+        guesses.insert(0, g)
+
     # ---- mtanh fit ----
     params_mtanh = profile_mtanh = chi_mtanh = None
     for guess in guesses:
@@ -555,6 +580,46 @@ def _fit_one_profile(psi, values, errors,
             break
         except Exception:
             continue
+
+    # ---- diagnostic plot: raw data, all guesses, and final fit ----
+    if debug_plot:
+        lbl  = 'ne' if is_ne else 'Te'
+        unit = 'm$^{-3}$' if is_ne else 'eV'
+        psi_plot = np.linspace(0.0, 1.25, 500)
+        y_max    = float(np.nanmax(values)) if values.size else 1.0
+
+        fig, ax = plt.subplots(figsize=(8, 5))
+        ax.errorbar(psi, values, yerr=errors,
+                    fmt='o', ms=5, color='steelblue', alpha=0.7,
+                    label='Data', zorder=5)
+
+        for i, g in enumerate(guesses):
+            try:
+                curve = fit_func(psi_plot, *g) * scale
+                ok = np.isfinite(curve) & (curve >= 0) & (curve < 5 * y_max)
+                if ok.any():
+                    ax.plot(psi_plot[ok], curve[ok], lw=1.2, alpha=0.6,
+                            label=f'Guess {i}')
+            except Exception:
+                pass
+
+        if profile_mtanh is not None:
+            ax.plot(psi_grid, profile_mtanh, color='crimson', lw=2.5,
+                    label=rf'Fit  $\chi^2_\nu={chi_mtanh:.2f}$', zorder=6)
+            title = f'{lbl} — fit succeeded'
+        else:
+            title = f'{lbl} — ALL GUESSES FAILED'
+
+        ax.axvline(1.0, color='black', ls='--', alpha=0.5, label='Sep')
+        ax.set_xlabel(r'$\psi_N$')
+        ax.set_ylabel(f'{lbl} ({unit})')
+        ax.set_xlim(0.0, 1.25)
+        ax.set_ylim(bottom=0, top=2.0 * y_max if y_max > 0 else 1)
+        ax.set_title(title, color='black' if profile_mtanh is not None else 'red')
+        ax.legend(fontsize=7, ncol=2, framealpha=0.8)
+        ax.grid(ls='--', alpha=0.3)
+        plt.tight_layout()
+        plt.show()
 
     # if enforce_mtanh is True and the fit has succeeed, we can return immediately here
     if enforce_mtanh:

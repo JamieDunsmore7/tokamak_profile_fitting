@@ -147,7 +147,10 @@ def _two_point_model(shot, time_s):
     W   = W_node.data() / 1e6
     dW_dt = float(np.interp(time_s, W_t, np.gradient(W, W_t)))
 
-    Psol = 0.8 * P_RF + P_oh - dW_dt - P_rad
+    P_RF_efficiency = 0.8 # value suggested by paper by Bonoli. This is the efficiency of the RF heating. NOTE: it may not always be 0.8
+
+
+    Psol = P_RF_efficiency * P_RF + P_oh - dW_dt - P_rad
     if Psol < 0:
         print('Psol < 0 — 2pt model unreliable, returning 60 eV')
         return 60.0
