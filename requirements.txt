@@ -1,0 +1,5 @@
+numpy
+scipy
+matplotlib
+MDSplus
+git+https://github.com/PSFCPlasmaTools/eqtools.git

@@ -11,11 +11,17 @@ A Python package for fitting electron density (ne) and temperature (Te) pedestal
 
 ## Dependencies
 
-**C-Mod fits require `eqtools`**, which is used to convert R_mid coordinates to normalised psi. Install it with:
+Install the core dependencies with:
 
 ```bash
-pip install eqtools
+pip install -r requirements.txt
 ```
+
+This installs `numpy`, `scipy`, `matplotlib`, `MDSplus`, and `eqtools`.
+
+> **Note on `eqtools`:** The version of `eqtools` on PyPI (`pip install eqtools`) is broken on Python 3.12+ / Ubuntu 24.04+ due to a missing header file (`_tricub.h`) in the source distribution. The `requirements.txt` above installs directly from the GitHub repository, which includes the missing file and works correctly. A fix has been submitted upstream.
+
+`omfit_classes` (required for DIII-D fits) cannot be installed via pip — it is available on the DIII-D cluster via `module load omfit/unstable`.
 
 ## Data access requirements
 

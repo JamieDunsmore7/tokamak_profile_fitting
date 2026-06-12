@@ -648,10 +648,15 @@ def _fit_one_profile(psi, values, errors,
     if _bad_chi(chi_cubic):
         params_cubic  = profile_cubic = chi_cubic  = None
 
-    # discard mtanh if fewer than 3 points in the pedestal region
+    # discard mtanh if fewer than 3 points in the pedestal region, or if either
+    # shoulder (inner top / outer foot) has no coverage
     if params_mtanh is not None:
         lo, hi = params_mtanh[0] - params_mtanh[1], params_mtanh[0] + params_mtanh[1]
-        if np.sum((psi > lo) & (psi < hi)) < 3:
+        mid = params_mtanh[0]
+        n_pedestal = np.sum((psi >= lo)  & (psi <= hi))
+        n_top      = np.sum((psi >= lo)  & (psi <  mid))
+        n_bottom   = np.sum((psi >= mid) & (psi <= hi))
+        if n_pedestal < 3 or n_top < 1 or n_bottom < 1:
             params_mtanh = profile_mtanh = chi_mtanh = None
 
     # choose best
@@ -706,6 +711,7 @@ def _plot_fit(psi_grid, psi_raw, values_raw, errors_raw,
     if shift:
         ax.axvline(1.0 - shift, color='purple', linestyle='--', alpha=0.5,
                    label='Separatrix (unmapped)')
+    ax.set_ylim(bottom=0)
     ax.set_xlabel(r'$\psi_N$')
     ax.set_ylabel(ylabel)
     t_str = time_label if isinstance(time_label, str) else f'{int(time_label)} ms'
