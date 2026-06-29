@@ -110,14 +110,16 @@ x3, te_francesco,  *_ = fit_sol_exponential_francesco(
     R_wall, R_lim, 'Te',
 )
 
-# convert pedestal fit to R-Rsep for the plot
-Rmid_grid  = d3d.psinorm_to_rmid(shot, time_ms, psi_grid)
+# convert pedestal fit and raw data to R-Rsep for the plot
+Rmid_grid   = d3d.psinorm_to_rmid(shot, time_ms, psi_grid)
 R_Rsep_grid = Rmid_grid - R_lcfs
+Rmid_raw    = d3d.psinorm_to_rmid(shot, time_ms, all_psi_te)
+R_Rsep_raw  = Rmid_raw - R_lcfs
 
 # ---- plot 2: pedestal + three SOL options ----
 fig, ax = plt.subplots(figsize=(8, 5))
 
-ax.scatter(all_psi_te - 1.0, all_te, color='red', alpha=0.1, s=10, label='Raw data')
+ax.scatter(R_Rsep_raw, all_te, color='red', alpha=0.1, s=10, label='Raw data')
 ax.plot(R_Rsep_grid, te_profile, color='black', linewidth=2, label='mtanh fit')
 ax.plot(x1[x1 >= 0], te_exp[x1 >= 0],        color='steelblue',  linewidth=2, label='Single exponential')
 ax.plot(x2[x2 >= 0], te_double_exp[x2 >= 0],  color='darkorange', linewidth=2, label='Double exponential')
@@ -127,6 +129,7 @@ ax.axvline(0, color='grey', linestyle='--', label='Separatrix')
 ax.set_xlabel('R - R$_{sep}$ (m)')
 ax.set_ylabel('Te (eV)')
 ax.set_title(f'DIII-D #{shot} — pedestal + SOL fits')
+ax.set_xlim(-0.15, 0.15)
 ax.legend()
 ax.grid(linestyle='--', alpha=0.3)
 plt.tight_layout()
