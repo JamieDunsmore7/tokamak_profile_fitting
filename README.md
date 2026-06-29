@@ -9,25 +9,30 @@ A Python package for fitting electron density (ne) and temperature (Te) pedestal
 - Optional post-fit shift of the psi axis to align the separatrix Te with a 2-point model prediction
 - Option to fit an exponential decay to the points in the scrape-off-layer, for density/temperature decay length analysis
 
-## Dependencies
+## Setup
 
-Install the core dependencies with:
+### C-Mod
+
+You must be on a **PSFC workstation**. Install dependencies with:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-This installs `numpy`, `scipy`, `matplotlib`, `MDSplus`, and `eqtools`.
+### DIII-D
 
-> **Note on `eqtools`:** The version of `eqtools` on PyPI (`pip install eqtools`) is broken on Python 3.12+ / Ubuntu 24.04+ due to a missing header file (`_tricub.h`) in the source distribution. The `requirements.txt` above installs directly from the GitHub repository, which includes the missing file and works correctly. A fix has been submitted upstream.
+You must be on the **DIII-D cluster**. Install dependencies with:
 
-`omfit_classes` (required for DIII-D fits) cannot be installed via pip — it is available on the DIII-D cluster via `module load omfit/unstable`.
+```bash
+module load omfit/unstable
+pip install --user -r requirements.txt
+```
 
-## Data access requirements
+Start every session with `module load omfit/unstable` before running fits.
 
-**C-Mod** data is fetched directly from the MDS+ tree using the `MDSplus` Python package. You must be on a **PSFC workstation** for this to work.
+### Note on eqtools
 
-**DIII-D** data is fetched using `omfit_classes`, which connects to the DIII-D MDS+ server. You must be on the **DIII-D cluster** for this to work, and `omfit_classes` must be available. Usually, this can be accessed by running `module load omfit/unstable` in the terminal at the start of the session.
+`eqtools` is installed from a [maintained fork](https://github.com/JamieDunsmore7/eqtools) rather than the original version.
 
 ## Repository structure
 
