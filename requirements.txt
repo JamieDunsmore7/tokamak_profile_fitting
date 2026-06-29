@@ -1,5 +1,4 @@
 numpy
 scipy
 matplotlib
-MDSplus
 git+https://github.com/JamieDunsmore7/eqtools.git@all-fixes
