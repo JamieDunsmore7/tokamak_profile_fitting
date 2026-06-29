@@ -30,12 +30,17 @@ def get_min_errorbars():
 # Thomson data
 # ---------------------------------------------------------------------------
 
-def get_thomson_data(shot, t_min, t_max):
-    """Fetch core + edge Thomson data and map to normalised poloidal flux.
+def get_thomson_data(shot, t_min, t_max, coordinate='psinorm'):
+    """Fetch core + edge Thomson data and map to a normalised radial coordinate.
+
+    Parameters
+    ----------
+    coordinate : 'psinorm' (default) or 'sqrtphinorm'
+        Passed directly to eqtools rho2rho as the target coordinate.
 
     Returns a dict with keys:
       times_ms  (N_t,)
-      psi       (N_spatial, N_t)
+      psi       (N_spatial, N_t)   values in the chosen coordinate
       ne        (N_spatial, N_t)  [m^-3]
       ne_err    (N_spatial, N_t)
       te        (N_spatial, N_t)  [eV]
@@ -102,8 +107,8 @@ def get_thomson_data(shot, t_min, t_max):
 
     for t_idx, time_ms in enumerate(times_ms):
         t_s   = time_ms / 1000.0
-        psi_c = eq.rho2rho('Rmid', 'psinorm', rmid_c[:, t_idx], t_s)
-        psi_e = eq.rho2rho('Rmid', 'psinorm', rmid_e[:, t_idx], t_s)
+        psi_c = eq.rho2rho('Rmid', coordinate, rmid_c[:, t_idx], t_s)
+        psi_e = eq.rho2rho('Rmid', coordinate, rmid_e[:, t_idx], t_s)
 
         psi[:n_c, t_idx]    = psi_c;    psi[n_c:, t_idx]    = psi_e
         ne[:n_c,  t_idx]    = ne_c[:,  t_idx]; ne[n_c:,  t_idx]  = ne_e[:,  t_idx]

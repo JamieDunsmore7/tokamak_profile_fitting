@@ -163,7 +163,8 @@ def fit_sol_double_exponential(shot, time_ms, device,
                                 psi_grid, fitted_profile,
                                 raw_psi_values, raw_values, raw_errors,
                                 R_wall, Rlim=None, output_R_grid=None,
-                                stronger_decay_behind_limiter=False):
+                                stronger_decay_behind_limiter=False,
+                                decay_length_behind_limiter=None):
     '''
     WHAT DOES THIS FUNCTION DO?
     Fits a double exponential decay to the SOL profile in R - R_sep space
@@ -223,33 +224,27 @@ def fit_sol_double_exponential(shot, time_ms, device,
 
     fitted_R_minus_Rsep = dev.psinorm_to_rmid(shot, time_ms, psi_grid) - Rmid_sep
 
-    if np.average(fitted_profile_SOL) > 1e10:
-        # DENSITY PROFILE
+    _is_density = np.average(fitted_profile_SOL) > 1e10
+
+    if _is_density:
         if stronger_decay_behind_limiter:
-            # set a different decay length behind the limiter shadow
-            limiter_shadow_decay_length = 0.025  # from Francesco's KN1D OMFIT module
+            limiter_shadow_decay_length = decay_length_behind_limiter if decay_length_behind_limiter is not None else 0.025
             limiter_R   = Rlim - Rmid_sep
             shadow_mask = generated_SOL_grid > limiter_R
             output_profile_at_limiter = interp1d(generated_SOL_grid, fitted_profile_SOL,
                                                   fill_value='extrapolate')(limiter_R)
             fitted_profile_SOL[shadow_mask] = output_profile_at_limiter * \
                 np.exp(-(generated_SOL_grid[shadow_mask] - limiter_R) / limiter_shadow_decay_length)
-
-        # This is the default minimum value for the density profile
         fitted_profile_SOL[fitted_profile_SOL < 1e16] = 1e16
     else:
-        # TEMPERATURE PROFILE
         if stronger_decay_behind_limiter:
-            # set a different decay length behind the limiter shadow
-            limiter_shadow_decay_length = 0.015  # from Francesco's KN1D OMFIT module
+            limiter_shadow_decay_length = decay_length_behind_limiter if decay_length_behind_limiter is not None else 0.015
             limiter_R   = Rlim - Rmid_sep
             shadow_mask = generated_SOL_grid > limiter_R
             output_profile_at_limiter = interp1d(generated_SOL_grid, fitted_profile_SOL,
                                                   fill_value='extrapolate')(limiter_R)
             fitted_profile_SOL[shadow_mask] = output_profile_at_limiter * \
                 np.exp(-(generated_SOL_grid[shadow_mask] - limiter_R) / limiter_shadow_decay_length)
-
-        # This is the default minimum value for the temperature profile
         fitted_profile_SOL[fitted_profile_SOL < 3] = 3
 
     if output_R_grid is None:

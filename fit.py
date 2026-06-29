@@ -26,8 +26,12 @@ from .utils import (
 )
 
 
-_PSI_GRID = np.append(np.arange(0.0, 0.8, 0.01),
-                      np.arange(0.8, 1.2001, 0.002))
+_PSI_GRID  = np.append(np.arange(0.0, 0.80, 0.01),
+                       np.arange(0.80, 1.2001, 0.002))
+
+# sqrtphinorm (rhot) grid: fine spacing starts at 0.93 (~pedestal top in rhot)
+_RHOT_GRID = np.append(np.arange(0.0, 0.93, 0.01),
+                       np.arange(0.93, 1.2001, 0.002))
 
 
 
@@ -36,6 +40,7 @@ def master_fit(
     device,
     t_min,
     t_max,
+    coordinate         = 'psinorm',
     mode               = 'per_slice',
     core_order         = 3,
     sol_order          = 0,
@@ -68,6 +73,10 @@ def master_fit(
     sol_order  : polynomial order for the outboard SOL (0–2)
     enforce_mtanh : only accept mtanh fits; skip time points where it fails.
                     if set to False, the lowest chi squared out of the cubic and mtanh fits will be chosen
+    coordinate : 'psinorm' (default) or 'sqrtphinorm' (rhot = sqrt of
+                 normalised toroidal flux, as used by Aaron's GPR pipeline).
+                 Selects the radial coordinate for both data mapping and the
+                 edge/core thresholds used during data cleaning.
     shift_to_2pt_model : shift the psi axis post-fit so the separatrix Te
                          matches the 2-point model prediction
     scale_to_tci : (C-Mod only) scale core Thomson ne to match the line-averaged interferometry measurements
@@ -75,12 +84,13 @@ def master_fit(
     set_ne_floor : minimum ne value (m^-3)
     set_min_errorbar : apply absolute and relative error floors before fitting
     remove_zeros : strip zero-valued data points inside the separatrix
-    add_sol_zero_flag : add an anchor zero at psi=1.05 to constrain the SOL
+    add_sol_zero_flag : add an anchor zero in the SOL to constrain the fit
     use_edge_chi_squared : evaluate chi-squared only in 0.6 < psi < 1.0
     plot     : show a plot of each fit as it is produced
     return_raw_data : include the processed per-slice raw data in the result
     return_errorbars : run Monte Carlo uncertainty estimation (slow)
-    psi_grid : custom output psi grid (default: coarse core + fine edge)
+    psi_grid : custom output radial grid (default: coarse core + fine edge,
+               appropriate for the chosen coordinate)
 
     Returns
     -------
@@ -99,8 +109,23 @@ def master_fit(
         ne_profiles_std (N_ne, N_psi)  only if return_errorbars=True
         raw_data        list of per-slice dicts, only if return_raw_data=True
     """
+    if coordinate not in ('psinorm', 'sqrtphinorm'):
+        raise ValueError(
+            f"coordinate must be 'psinorm' or 'sqrtphinorm', got '{coordinate}'")
+
+    # Thresholds that distinguish the pedestal/edge region from the core.
+    # In psinorm, 0.8 sits just inside the pedestal top.
+    # In sqrtphinorm (rhot), the equivalent position is ~0.93 (rhot=0.8
+    # corresponds to psinorm~0.64, which is too deep into the core).
+    if coordinate == 'sqrtphinorm':
+        edge_thresh = 0.93
+        sol_anchor  = 1.05
+    else:
+        edge_thresh = 0.80
+        sol_anchor  = 1.05
+
     if psi_grid is None:
-        psi_grid = _PSI_GRID.copy()
+        psi_grid = (_RHOT_GRID if coordinate == 'sqrtphinorm' else _PSI_GRID).copy()
 
     name = device.lower().replace('-', '').replace(' ', '')
     if name == 'cmod':
@@ -116,7 +141,7 @@ def master_fit(
     min_te_err         = min_errs['te']
 
     # ---- fetch data ----
-    data      = dev.get_thomson_data(shot, t_min, t_max)
+    data      = dev.get_thomson_data(shot, t_min, t_max, coordinate=coordinate)
     times_ms  = data['times_ms']
     psi_all   = data['psi']
     ne_all    = data['ne']
@@ -150,7 +175,12 @@ def master_fit(
         ne_t     = ne_t[valid];    ne_err_t = ne_err_t[valid]
         te_t     = te_t[valid];    te_err_t = te_err_t[valid]
 
-        if len(psi_t) == 0 or np.sum(psi_t < 0.8) < 3:
+        # In per_slice mode each timeslice must be self-contained so require
+        # at least 3 core points.  In time_window mode the pool across all
+        # timeslices provides core coverage, so a slice with only edge data
+        # can still usefully constrain the pedestal region.
+        min_core = 3 if mode == 'per_slice' else 0
+        if len(psi_t) == 0 or np.sum(psi_t < edge_thresh) < min_core:
             print(f'  t={time_ms} ms: insufficient core data, skipping')
             continue
 
@@ -168,15 +198,15 @@ def master_fit(
         psi_te, te, te_err = psi_t.copy(), te_t.copy(), te_err_t.copy()
         psi_ne, ne, ne_err = psi_t.copy(), ne_t.copy(), ne_err_t.copy()
         if add_sol_zero_flag:
-            edge_sel = psi_t > 0.8
+            edge_sel = psi_t > edge_thresh
             core_sel = ~edge_sel
             # Add a zero anchor in the SOL to edge data only, then recombine
             # with core — matching the original repo (functions_fit_1D.py:200-210)
-            psi_te_e, te_e, te_err_e = add_sol_zero(psi_te[edge_sel], te[edge_sel], te_err[edge_sel])
+            psi_te_e, te_e, te_err_e = add_sol_zero(psi_te[edge_sel], te[edge_sel], te_err[edge_sel], psi_sol=sol_anchor)
             psi_te = np.concatenate([psi_te[core_sel], psi_te_e])
             te     = np.concatenate([te[core_sel],     te_e])
             te_err = np.concatenate([te_err[core_sel], te_err_e])
-            psi_ne_e, ne_e, ne_err_e = add_sol_zero(psi_ne[edge_sel], ne[edge_sel], ne_err[edge_sel])
+            psi_ne_e, ne_e, ne_err_e = add_sol_zero(psi_ne[edge_sel], ne[edge_sel], ne_err[edge_sel], psi_sol=sol_anchor)
             psi_ne = np.concatenate([psi_ne[core_sel], psi_ne_e])
             ne     = np.concatenate([ne[core_sel],     ne_e])
             ne_err = np.concatenate([ne_err[core_sel], ne_err_e])
@@ -185,7 +215,7 @@ def master_fit(
             te_err = np.maximum(te_err, np.maximum(min_te_err, te * 0.05))
             ne_err = np.maximum(ne_err, np.maximum(min_ne_err, ne * 0.05))
 
-        edge_sel = psi_t > 0.8
+        edge_sel = psi_t > edge_thresh
         slices.append(dict(
             time_ms     = time_ms,
             psi_te      = psi_te,  te     = te,    te_err  = te_err,
@@ -199,6 +229,14 @@ def master_fit(
     if len(slices) == 0:
         raise ValueError('No valid time slices found in the requested window.')
 
+    if mode == 'time_window':
+        all_psi = np.concatenate([s['psi_te'] for s in slices])
+        if np.sum(all_psi < edge_thresh) < 3:
+            raise ValueError(
+                f'Fewer than 3 core points (psi < {edge_thresh}) across the '
+                f'entire time window — cannot constrain the fit.'
+            )
+
     fit_kwargs = dict(
         psi_grid=psi_grid, fit_func=fit_func, n_params=n_params,
         enforce_mtanh=enforce_mtanh, use_edge_chi_squared=use_edge_chi_squared,
@@ -206,6 +244,7 @@ def master_fit(
         shift_to_2pt_model=shift_to_2pt_model, dev=dev, shot=shot,
         plot=plot, debug_plot=debug_plot,
         return_raw_data=return_raw_data, return_errorbars=return_errorbars,
+        edge_thresh=edge_thresh,
     )
 
     if mode == 'per_slice':
@@ -223,7 +262,8 @@ def master_fit(
 def _fit_per_slice(slices, psi_grid, fit_func, n_params, enforce_mtanh,
                    use_edge_chi_squared, set_te_floor, set_ne_floor,
                    shift_to_2pt_model, dev, shot,
-                   plot, debug_plot, return_raw_data, return_errorbars):
+                   plot, debug_plot, return_raw_data, return_errorbars,
+                   edge_thresh=0.8):
 
     te_times, te_profiles, te_chisq, te_types = [], [], [], []
     ne_times, ne_profiles, ne_chisq, ne_types = [], [], [], []
@@ -241,6 +281,7 @@ def _fit_per_slice(slices, psi_grid, fit_func, n_params, enforce_mtanh,
             psi_grid=psi_grid, fit_func=fit_func, n_params=n_params,
             enforce_mtanh=enforce_mtanh, use_edge_chi_squared=use_edge_chi_squared,
             profile_type='te', last_params=last_te_params, debug_plot=debug_plot,
+            edge_thresh=edge_thresh,
         )
 
         ne_profile, ne_chi, ne_type, last_ne_params = _fit_one_profile(
@@ -248,6 +289,7 @@ def _fit_per_slice(slices, psi_grid, fit_func, n_params, enforce_mtanh,
             psi_grid=psi_grid, fit_func=fit_func, n_params=n_params,
             enforce_mtanh=enforce_mtanh, use_edge_chi_squared=use_edge_chi_squared,
             profile_type='ne', last_params=last_ne_params, debug_plot=debug_plot,
+            edge_thresh=edge_thresh,
         )
 
         if te_profile is None and ne_profile is None:
@@ -337,21 +379,21 @@ def _fit_per_slice(slices, psi_grid, fit_func, n_params, enforce_mtanh,
 # Time-window mode
 # ---------------------------------------------------------------------------
 
-def _align_slice_psi(sl, dev, shot):
-    """Shift outer psi (> 0.8) of a slice to align its pedestal with the 2pt model.
+def _align_slice_psi(sl, dev, shot, edge_thresh=0.8):
+    """Shift outer psi (> edge_thresh) of a slice to align its pedestal with the 2pt model.
 
     Matches the original repo's get_twopt_shift_from_edge_Te_fit logic:
-    fits Osborne_Tanh_linear to the outer data (psi > 0.8, including the SOL
-    zero anchor), finds where the fit crosses the 2pt model Te_sep, and shifts
-    all psi > 0.8 by that amount.
+    fits Osborne_Tanh_linear to the outer data (psi > edge_thresh, including the
+    SOL zero anchor), finds where the fit crosses the 2pt model Te_sep, and shifts
+    all psi > edge_thresh by that amount.
     """
     from .profiles.fit_functions import Osborne_Tanh_linear
 
     time_ms = sl['time_ms']
 
-    # Use the full psi_te array filtered to psi > 0.8 — this includes the SOL
-    # zero anchor at psi=1.05, matching the original code's edge fit input
-    outer = sl['psi_te'] > 0.8
+    # Use the full psi_te array filtered to psi > edge_thresh — this includes
+    # the SOL zero anchor, matching the original code's edge fit input
+    outer = sl['psi_te'] > edge_thresh
     psi_outer   = sl['psi_te'][outer]
     te_outer    = sl['te'][outer]
     te_err_outer = sl['te_err'][outer]
@@ -403,7 +445,7 @@ def _align_slice_psi(sl, dev, shot):
     sl = dict(sl)
     for key in ('psi_te', 'psi_ne'):
         arr = sl[key].copy()
-        arr[arr > 0.8] += shift
+        arr[arr > edge_thresh] += shift
         sl[key] = arr
 
     return sl, shift
@@ -412,7 +454,8 @@ def _align_slice_psi(sl, dev, shot):
 def _fit_time_window(slices, psi_grid, fit_func, n_params, enforce_mtanh,
                      use_edge_chi_squared, set_te_floor, set_ne_floor,
                      shift_to_2pt_model, dev, shot,
-                     plot, debug_plot, return_raw_data, return_errorbars):
+                     plot, debug_plot, return_raw_data, return_errorbars,
+                     edge_thresh=0.8):
 
     # When shift_to_2pt_model is requested, align each slice individually
     # before pooling so the pedestal sits at a consistent psi position.
@@ -422,7 +465,7 @@ def _fit_time_window(slices, psi_grid, fit_func, n_params, enforce_mtanh,
     slice_shifts   = []
     for sl in slices:
         if shift_to_2pt_model:
-            sl, s = _align_slice_psi(sl, dev, shot)
+            sl, s = _align_slice_psi(sl, dev, shot, edge_thresh=edge_thresh)
             slice_shifts.append(s)
         aligned_slices.append(sl)
     mean_psi_shift = float(np.mean(slice_shifts)) if slice_shifts else 0.0
@@ -442,14 +485,14 @@ def _fit_time_window(slices, psi_grid, fit_func, n_params, enforce_mtanh,
         psi=psi_te_pool, values=te_pool, errors=te_err_pool,
         psi_grid=psi_grid, fit_func=fit_func, n_params=n_params,
         enforce_mtanh=enforce_mtanh, use_edge_chi_squared=use_edge_chi_squared,
-        profile_type='te', debug_plot=debug_plot,
+        profile_type='te', debug_plot=debug_plot, edge_thresh=edge_thresh,
     )
 
     ne_profile, ne_chi, ne_type, _ = _fit_one_profile(
         psi=psi_ne_pool, values=ne_pool, errors=ne_err_pool,
         psi_grid=psi_grid, fit_func=fit_func, n_params=n_params,
         enforce_mtanh=enforce_mtanh, use_edge_chi_squared=use_edge_chi_squared,
-        profile_type='ne', debug_plot=debug_plot,
+        profile_type='ne', debug_plot=debug_plot, edge_thresh=edge_thresh,
     )
 
     if set_te_floor is not None and te_profile is not None:
@@ -496,7 +539,8 @@ def _fit_time_window(slices, psi_grid, fit_func, n_params, enforce_mtanh,
 def _fit_one_profile(psi, values, errors,
                      psi_grid, fit_func, n_params,
                      enforce_mtanh, use_edge_chi_squared,
-                     profile_type, last_params=None, debug_plot=False):
+                     profile_type, last_params=None, debug_plot=False,
+                     edge_thresh=0.8):
     """Fit one profile (Te or ne) with mtanh and optionally cubic.
 
     Returns (profile_on_grid, chi_squared, fit_type_str, updated_last_params).
@@ -541,7 +585,7 @@ def _fit_one_profile(psi, values, errors,
     # matching the original which passes raw_te_psi_edge/raw_ne_psi_edge after
     # add_SOL_zeros_in_psi_coords (functions_fit_1D.py lines 333-334, 473)
     try:
-        edge_sel = psi > 0.8
+        edge_sel = psi > edge_thresh
         auto = Osborne_linear_initial_guesses(psi[edge_sel], vals_s[edge_sel], n_params)
         guesses.insert(0, np.array(auto))
     except Exception:
@@ -648,15 +692,10 @@ def _fit_one_profile(psi, values, errors,
     if _bad_chi(chi_cubic):
         params_cubic  = profile_cubic = chi_cubic  = None
 
-    # discard mtanh if fewer than 3 points in the pedestal region, or if either
-    # shoulder (inner top / outer foot) has no coverage
+    # discard mtanh if fewer than 3 points in the pedestal region
     if params_mtanh is not None:
         lo, hi = params_mtanh[0] - params_mtanh[1], params_mtanh[0] + params_mtanh[1]
-        mid = params_mtanh[0]
-        n_pedestal = np.sum((psi >= lo)  & (psi <= hi))
-        n_top      = np.sum((psi >= lo)  & (psi <  mid))
-        n_bottom   = np.sum((psi >= mid) & (psi <= hi))
-        if n_pedestal < 3 or n_top < 1 or n_bottom < 1:
+        if np.sum((psi > lo) & (psi < hi)) < 3:
             params_mtanh = profile_mtanh = chi_mtanh = None
 
     # choose best

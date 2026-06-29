@@ -36,8 +36,9 @@ def get_min_errorbars():
 # Thomson data
 # ---------------------------------------------------------------------------
 
-def get_thomson_data(shot, t_min, t_max):
+def get_thomson_data(shot, t_min, t_max, coordinate='psinorm'):
     """Fetch DIII-D core Thomson data and map to normalised poloidal flux.
+    (coordinate kwarg accepted for interface compatibility but always uses psinorm.)
 
     Returns a dict with keys:
       times_ms  (N_t,)
