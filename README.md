@@ -32,7 +32,7 @@ Start every session with `module load omfit/unstable` before running fits.
 
 ### Note on eqtools
 
-`eqtools` is installed from a [patched fork](https://github.com/JamieDunsmore7/eqtools/tree/all-fixes) rather than the PyPI version. The PyPI version has several Python 3 compatibility bugs (integer division errors, gfile header parsing failures on non-C-Mod machines, and a missing `_tricub.h` on Python 3.12+) that are fixed in the fork.
+`eqtools` is installed from a [fork](https://github.com/JamieDunsmore7/eqtools/tree/all-fixes) rather than the original version. The original version has several Python 3 compatibility bugs that are fixed in the fork.
 
 ## Repository structure
 
