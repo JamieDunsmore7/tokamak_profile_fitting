@@ -47,38 +47,38 @@ def get_thomson_data(shot, t_min, t_max, coordinate='psinorm'):
       te_err    (N_spatial, N_t)
       edge_mask (N_spatial,) bool — True for edge TS points
     """
-    tree = MDSplus.Tree('CMOD', shot)
+    with MDSplus.Tree('CMOD', shot, 'READONLY') as tree:
 
-    # edge Thomson
-    te_e     = tree.getNode('\\TOP.ELECTRONS.YAG_EDGETS.RESULTS:TE').data()
-    te_err_e = tree.getNode('\\TOP.ELECTRONS.YAG_EDGETS.RESULTS:TE:ERROR').data()
-    ne_e     = tree.getNode('\\TOP.ELECTRONS.YAG_EDGETS.RESULTS:NE').data()
-    ne_err_e = tree.getNode('\\TOP.ELECTRONS.YAG_EDGETS.RESULTS:NE:ERROR').data()
-    rmid_e   = tree.getNode('\\TOP.ELECTRONS.YAG_EDGETS.RESULTS:RMID').data()
-    t_raw    = tree.getNode('\\TOP.ELECTRONS.YAG_EDGETS.RESULTS:NE').dim_of().data()
+        # edge Thomson
+        te_e     = tree.getNode('\\TOP.ELECTRONS.YAG_EDGETS.RESULTS:TE').data()
+        te_err_e = tree.getNode('\\TOP.ELECTRONS.YAG_EDGETS.RESULTS:TE:ERROR').data()
+        ne_e     = tree.getNode('\\TOP.ELECTRONS.YAG_EDGETS.RESULTS:NE').data()
+        ne_err_e = tree.getNode('\\TOP.ELECTRONS.YAG_EDGETS.RESULTS:NE:ERROR').data()
+        rmid_e   = tree.getNode('\\TOP.ELECTRONS.YAG_EDGETS.RESULTS:RMID').data()
+        t_raw    = tree.getNode('\\TOP.ELECTRONS.YAG_EDGETS.RESULTS:NE').dim_of().data()
 
-    times_ms = np.round(t_raw * 1000).astype(int)
-    mask     = (times_ms > t_min) & (times_ms < t_max)
-    times_ms = times_ms[mask]
-    te_e, te_err_e = te_e[:, mask],  te_err_e[:, mask]
-    ne_e, ne_err_e = ne_e[:, mask],  ne_err_e[:, mask]
-    rmid_e         = rmid_e[:, mask]
+        times_ms = np.round(t_raw * 1000).astype(int)
+        mask     = (times_ms > t_min) & (times_ms < t_max)
+        times_ms = times_ms[mask]
+        te_e, te_err_e = te_e[:, mask],  te_err_e[:, mask]
+        ne_e, ne_err_e = ne_e[:, mask],  ne_err_e[:, mask]
+        rmid_e         = rmid_e[:, mask]
 
-    # core Thomson
-    if shot > 1020000000:
-        te_c     = tree.getNode('\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:TE_RZ').data() * 1000
-        te_err_c = tree.getNode('\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:TE_ERR').data() * 1000
-        ne_c     = tree.getNode('\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:NE_RZ').data()
-        ne_err_c = tree.getNode('\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:NE_ERR').data()
-        rmid_c   = tree.getNode('\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:R_MID_T').data()
-        t_core   = tree.getNode('\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:NE_RZ').dim_of().data()
-    else:
-        te_c     = tree.getNode('\\TOP.ELECTRONS.YAG.RESULTS.GLOBAL.PROFILE:TE_RZ_T').data() * 1000
-        te_err_c = tree.getNode('\\TOP.ELECTRONS.YAG.RESULTS.GLOBAL.PROFILE:TE_ERR_ZT').data() * 1000
-        ne_c     = tree.getNode('\\TOP.ELECTRONS.YAG.RESULTS.GLOBAL.PROFILE:NE_RZ_T').data()
-        ne_err_c = tree.getNode('\\TOP.ELECTRONS.YAG.RESULTS.GLOBAL.PROFILE:NE_ERR_ZT').data()
-        rmid_c   = tree.getNode('\\TOP.ELECTRONS.YAG.RESULTS.GLOBAL.PROFILE:R_MID_T').data()
-        t_core   = tree.getNode('\\TOP.ELECTRONS.YAG.RESULTS.GLOBAL.PROFILE:NE_RZ_T').dim_of().data()
+        # core Thomson
+        if shot > 1020000000:
+            te_c     = tree.getNode('\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:TE_RZ').data() * 1000
+            te_err_c = tree.getNode('\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:TE_ERR').data() * 1000
+            ne_c     = tree.getNode('\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:NE_RZ').data()
+            ne_err_c = tree.getNode('\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:NE_ERR').data()
+            rmid_c   = tree.getNode('\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:R_MID_T').data()
+            t_core   = tree.getNode('\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:NE_RZ').dim_of().data()
+        else:
+            te_c     = tree.getNode('\\TOP.ELECTRONS.YAG.RESULTS.GLOBAL.PROFILE:TE_RZ_T').data() * 1000
+            te_err_c = tree.getNode('\\TOP.ELECTRONS.YAG.RESULTS.GLOBAL.PROFILE:TE_ERR_ZT').data() * 1000
+            ne_c     = tree.getNode('\\TOP.ELECTRONS.YAG.RESULTS.GLOBAL.PROFILE:NE_RZ_T').data()
+            ne_err_c = tree.getNode('\\TOP.ELECTRONS.YAG.RESULTS.GLOBAL.PROFILE:NE_ERR_ZT').data()
+            rmid_c   = tree.getNode('\\TOP.ELECTRONS.YAG.RESULTS.GLOBAL.PROFILE:R_MID_T').data()
+            t_core   = tree.getNode('\\TOP.ELECTRONS.YAG.RESULTS.GLOBAL.PROFILE:NE_RZ_T').dim_of().data()
 
     core_times_ms = np.round(t_core * 1000).astype(int)
     core_mask     = (core_times_ms > t_min) & (core_times_ms < t_max)
@@ -133,42 +133,42 @@ def get_Te_sep(shot, time_ms):
 
 
 def _two_point_model(shot, time_s):
-    tree = MDSplus.Tree('cmod', shot)
+    with MDSplus.Tree('cmod', shot, 'READONLY') as tree:
 
-    def _interp(path):
-        node = tree.getNode(path)
-        return float(np.interp(time_s, node.dim_of().data(), node.data()))
+        def _interp(path):
+            node = tree.getNode(path)
+            return float(np.interp(time_s, node.dim_of().data(), node.data()))
 
-    try:
-        P_rad = _interp('\\top.spectroscopy.bolometer:results:foil:main_power') / 1e6
-    except Exception:
-        P_rad = _interp('\\top.spectroscopy.bolometer:twopi_diode') * 3 * 1000 / 1e6
+        try:
+            P_rad = _interp('\\top.spectroscopy.bolometer:results:foil:main_power') / 1e6
+        except Exception:
+            P_rad = _interp('\\top.spectroscopy.bolometer:twopi_diode') * 3 * 1000 / 1e6
 
-    P_RF = _interp('\\top.RF.antenna.results:pwr_net_tot')
-    P_oh = float(np.interp(time_s, *_get_P_ohmic(shot)))
+        P_RF = _interp('\\top.RF.antenna.results:pwr_net_tot')
+        P_oh = float(np.interp(time_s, *_get_P_ohmic(shot)))
 
-    W_node = tree.getNode('\\top.MHD.ANALYSIS.EFIT.RESULTS.A_EQDSK:WPLASM')
-    W_t = W_node.dim_of().data()
-    W   = W_node.data() / 1e6
-    dW_dt = float(np.interp(time_s, W_t, np.gradient(W, W_t)))
+        W_node = tree.getNode('\\top.MHD.ANALYSIS.EFIT.RESULTS.A_EQDSK:WPLASM')
+        W_t = W_node.dim_of().data()
+        W   = W_node.data() / 1e6
+        dW_dt = float(np.interp(time_s, W_t, np.gradient(W, W_t)))
 
-    P_RF_efficiency = 0.8 # value suggested by paper by Bonoli. This is the efficiency of the RF heating. NOTE: it may not always be 0.8
+        P_RF_efficiency = 0.8 # value suggested by paper by Bonoli. This is the efficiency of the RF heating. NOTE: it may not always be 0.8
 
 
-    Psol = P_RF_efficiency * P_RF + P_oh - dW_dt - P_rad
-    if Psol < 0:
-        print('Psol < 0 — 2pt model unreliable, returning 60 eV')
-        return 60.0
+        Psol = P_RF_efficiency * P_RF + P_oh - dW_dt - P_rad
+        if Psol < 0:
+            print('Psol < 0 — 2pt model unreliable, returning 60 eV')
+            return 60.0
 
-    BTaxis = _interp('\\top.MHD.magnetics.diamag_coils:btor')
-    betat  = _interp('\\top.MHD.ANALYSIS.EFIT.RESULTS.A_EQDSK:betat')
-    p_vol  = (betat / 100) * BTaxis ** 2 / (2.0 * 4.0 * np.pi * 1e-7)
-    q95    = _interp('\\top.MHD.ANALYSIS.EFIT.RESULTS.A_EQDSK:qpsib')
+        BTaxis = _interp('\\top.MHD.magnetics.diamag_coils:btor')
+        betat  = _interp('\\top.MHD.ANALYSIS.EFIT.RESULTS.A_EQDSK:betat')
+        p_vol  = (betat / 100) * BTaxis ** 2 / (2.0 * 4.0 * np.pi * 1e-7)
+        q95    = _interp('\\top.MHD.ANALYSIS.EFIT.RESULTS.A_EQDSK:qpsib')
 
-    try:
-        eq = eqtools.CModEFIT.CModEFITTree(int(shot), tree='EFIT20')
-    except Exception:
-        eq = eqtools.CModEFIT.CModEFITTree(int(shot), tree='ANALYSIS')
+        try:
+            eq = eqtools.CModEFIT.CModEFITTree(int(shot), tree='EFIT20')
+        except Exception:
+            eq = eqtools.CModEFIT.CModEFITTree(int(shot), tree='ANALYSIS')
 
     Rlcfs = float(eq.rho2rho('psinorm', 'Rmid', 1, time_s))
     Bt    = abs(float(eq.rz2BT(Rlcfs, 0, time_s)))
@@ -182,15 +182,15 @@ def _two_point_model(shot, time_s):
 
 
 def _get_P_ohmic(shot):
-    tree   = MDSplus.Tree('cmod', shot)
-    node   = tree.getNode('\\top.MHD.ANALYSIS.EFIT.RESULTS.G_EQDSK.SSIBRY')
-    t      = node.dim_of(0).data()
-    psi_b  = node.data()
-    vsurf  = np.gradient(smooth(psi_b, 5), t) * 2 * np.pi
-    ip     = np.abs(tree.getNode('\\top.MHD.ANALYSIS.EFIT.RESULTS.A_EQDSK:CPASMA').data())
-    li     = tree.getNode('\\top.MHD.ANALYSIS.EFIT.RESULTS.A_EQDSK:ali').data()
-    L      = li * 2 * np.pi * 67.0 * 1e-9
-    vi     = L * np.gradient(smooth(ip, 2), t)
+    with MDSplus.Tree('cmod', shot, 'READONLY') as tree:
+        node   = tree.getNode('\\top.MHD.ANALYSIS.EFIT.RESULTS.G_EQDSK.SSIBRY')
+        t      = node.dim_of(0).data()
+        psi_b  = node.data()
+        vsurf  = np.gradient(smooth(psi_b, 5), t) * 2 * np.pi
+        ip     = np.abs(tree.getNode('\\top.MHD.ANALYSIS.EFIT.RESULTS.A_EQDSK:CPASMA').data())
+        li     = tree.getNode('\\top.MHD.ANALYSIS.EFIT.RESULTS.A_EQDSK:ali').data()
+        L      = li * 2 * np.pi * 67.0 * 1e-9
+        vi     = L * np.gradient(smooth(ip, 2), t)
     return t, ip * (vsurf - vi) / 1e6
 
 
@@ -213,25 +213,25 @@ def psinorm_to_rmid(shot, time_ms, psi):
 
 def scale_to_tci(shot, times_ms, ne_core):
     """Scale core Thomson ne to match TCI interferometry (computed over 0.5–1.5 s)."""
-    tree    = MDSplus.Tree('cmod', shot)
-    ip_node = tree.getNode('\\ip')
-    ip_t    = ip_node.dim_of().data()
-    ip_data = ip_node.data()
+    with MDSplus.Tree('cmod', shot, 'READONLY') as tree:
+        ip_node = tree.getNode('\\ip')
+        ip_t    = ip_node.dim_of().data()
+        ip_data = ip_node.data()
 
-    idx = np.where((ip_t > 0.5) & (ip_t < 1.5))[0]
-    if len(idx) == 0 or abs(ip_data[idx[0]]) < 0.4e6 or abs(ip_data[idx[-1]]) < 0.4e6:
-        print('Ip < 0.4 MA over 0.5–1.5 s; skipping TCI scaling.')
-        return ne_core
+        idx = np.where((ip_t > 0.5) & (ip_t < 1.5))[0]
+        if len(idx) == 0 or abs(ip_data[idx[0]]) < 0.4e6 or abs(ip_data[idx[-1]]) < 0.4e6:
+            print('Ip < 0.4 MA over 0.5–1.5 s; skipping TCI scaling.')
+            return ne_core
 
-    mf1, mf2, _ = _get_ts_tci_ratio(shot, 0.5, 1.5)
-    n_yag1, n_yag2, idx1, idx2 = _parse_yags(shot)
+        mf1, mf2, _ = _get_ts_tci_ratio(shot, 0.5, 1.5)
+        n_yag1, n_yag2, idx1, idx2 = _parse_yags(shot)
 
-    ts_node = tree.getNode(
-        '\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:NE_RZ'
-        if shot > 1020000000 else
-        '\\TOP.ELECTRONS.YAG.RESULTS.GLOBAL.PROFILE:NE_RZ_T'
-    )
-    ts_t = ts_node.dim_of().data()
+        ts_node = tree.getNode(
+            '\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:NE_RZ'
+            if shot > 1020000000 else
+            '\\TOP.ELECTRONS.YAG.RESULTS.GLOBAL.PROFILE:NE_RZ_T'
+        )
+        ts_t = ts_node.dim_of().data()
 
     laser1_ms = np.round(ts_t[idx1] * 1000).astype(int) if n_yag1 > 0 else np.array([], dtype=int)
     laser2_ms = np.round(ts_t[idx2] * 1000).astype(int) if n_yag2 > 0 else np.array([], dtype=int)
@@ -260,16 +260,16 @@ def _get_ts_tci_ratio(shot, tmin, tmax, nl_num=4):
 
 
 def _compare_ts_tci(shot, tmin, tmax, nl_num=4):
-    electrons = MDSplus.Tree('electrons', shot)
-    ch_str    = f'0{nl_num}' if nl_num < 10 else str(nl_num)
-    try:
-        ts_t = electrons.getNode('\\electrons::top.yag_new.results.profiles:ne_rz').dim_of(0).data()
-        _ = len(ts_t)
-    except Exception:
-        ts_t = electrons.getNode('\\electrons::top.yag.results.global.profile:ne_rz_t').dim_of(0).data()
+    with MDSplus.Tree('electrons', shot, 'READONLY') as electrons:
+        ch_str    = f'0{nl_num}' if nl_num < 10 else str(nl_num)
+        try:
+            ts_t = electrons.getNode('\\electrons::top.yag_new.results.profiles:ne_rz').dim_of(0).data()
+            _ = len(ts_t)
+        except Exception:
+            ts_t = electrons.getNode('\\electrons::top.yag.results.global.profile:ne_rz_t').dim_of(0).data()
 
-    tci   = electrons.getNode(f'\\electrons::top.tci.results:nl_{ch_str}').data().flatten()
-    tci_t = electrons.getNode(f'\\electrons::top.tci.results:nl_{ch_str}').dim_of(0).data()
+        tci   = electrons.getNode(f'\\electrons::top.tci.results:nl_{ch_str}').data().flatten()
+        tci_t = electrons.getNode(f'\\electrons::top.tci.results:nl_{ch_str}').dim_of(0).data()
 
     nl_ts, nl_ts_t = _integrate_ts_to_tci(shot, tmin, tmax, nl_num)
     t0, t1_edge    = np.min(nl_ts_t), np.max(nl_ts_t)
@@ -323,27 +323,27 @@ def _integrate_ts_to_tci(shot, tmin, tmax, nl_num=4):
 
 
 def _map_ts_to_tci(shot, tmin, tmax, nl_num=4):
-    electrons = MDSplus.Tree('electrons', shot)
-    analysis  = MDSplus.Tree('analysis', shot)
-    psi_a_t   = analysis.getNode('\\efit_aeqdsk:sibdry').dim_of(0).data()
-    t1, t2    = np.min(psi_a_t), np.max(psi_a_t)
+    with MDSplus.Tree('electrons', shot, 'READONLY') as electrons:
+        analysis  = MDSplus.Tree('analysis', shoti, 'READONLY')
+        psi_a_t   = analysis.getNode('\\efit_aeqdsk:sibdry').dim_of(0).data()
+        t1, t2    = np.min(psi_a_t), np.max(psi_a_t)
 
-    try:
-        t_ts    = electrons.getNode('\\electrons::top.yag_new.results.profiles:ne_rz').dim_of(0).data()
-        ne_core = electrons.getNode('\\electrons::top.yag_new.results.profiles:ne_rz').data()
-        ne_cerr = electrons.getNode('\\electrons::top.yag_new.results.profiles:ne_err').data()
-        z_core  = electrons.getNode('\\electrons::top.yag_new.results.profiles:z_sorted').data()
-    except Exception:
-        t_ts    = electrons.getNode('\\electrons::top.yag.results.global.profile:ne_rz_t').dim_of(0).data()
-        ne_core = electrons.getNode('\\electrons::top.yag.results.global.profile:ne_rz_t').data()
-        ne_cerr = electrons.getNode('\\electrons::top.yag.results.global.profile:ne_err_zt').data()
-        z_core  = electrons.getNode('\\electrons::top.yag.results.global.profile:z_sorted').data()
+        try:
+            t_ts    = electrons.getNode('\\electrons::top.yag_new.results.profiles:ne_rz').dim_of(0).data()
+            ne_core = electrons.getNode('\\electrons::top.yag_new.results.profiles:ne_rz').data()
+            ne_cerr = electrons.getNode('\\electrons::top.yag_new.results.profiles:ne_err').data()
+            z_core  = electrons.getNode('\\electrons::top.yag_new.results.profiles:z_sorted').data()
+        except Exception:
+            t_ts    = electrons.getNode('\\electrons::top.yag.results.global.profile:ne_rz_t').dim_of(0).data()
+            ne_core = electrons.getNode('\\electrons::top.yag.results.global.profile:ne_rz_t').data()
+            ne_cerr = electrons.getNode('\\electrons::top.yag.results.global.profile:ne_err_zt').data()
+            z_core  = electrons.getNode('\\electrons::top.yag.results.global.profile:z_sorted').data()
 
-    ne_edge  = electrons.getNode('\\electrons::top.yag_edgets.results:ne').data()
-    ne_eedge = electrons.getNode('\\electrons::top.yag_edgets.results:ne:error').data()
-    z_edge   = electrons.getNode('\\electrons::top.yag_edgets.data:fiber_z').data()
-    r_ts     = electrons.getNode('\\electrons::top.yag.results.param:r').data()
-    r_tci_all = electrons.getNode('\\electrons::top.tci.results:rad').data()
+        ne_edge  = electrons.getNode('\\electrons::top.yag_edgets.results:ne').data()
+        ne_eedge = electrons.getNode('\\electrons::top.yag_edgets.results:ne:error').data()
+        z_edge   = electrons.getNode('\\electrons::top.yag_edgets.data:fiber_z').data()
+        r_ts     = electrons.getNode('\\electrons::top.yag.results.param:r').data()
+        r_tci_all = electrons.getNode('\\electrons::top.tci.results:rad').data()
 
     m_c, m_e = len(z_core), len(z_edge)
     m_ts     = m_c + m_e
@@ -393,15 +393,15 @@ def _map_ts_to_tci(shot, tmin, tmax, nl_num=4):
 
 
 def _parse_yags(shot):
-    electrons = MDSplus.Tree('electrons', shot)
-    try:
-        n1 = int(electrons.getNode('\\knobs:pulses_q').data())
-    except Exception:
-        n1 = 0
-    try:
-        n2 = int(electrons.getNode('\\knobs:pulses_q_2').data())
-    except Exception:
-        n2 = 0
+    with MDSplus.Tree('electrons', shot, 'READONLY') as electrons:
+        try:
+            n1 = int(electrons.getNode('\\knobs:pulses_q').data())
+        except Exception:
+            n1 = 0
+        try:
+            n2 = int(electrons.getNode('\\knobs:pulses_q_2').data())
+        except Exception:
+            n2 = 0
 
     dark    = int(electrons.getNode('\\n_dark_prior').data())
     n_total = int(electrons.getNode('\\n_total').data())
