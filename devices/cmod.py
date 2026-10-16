@@ -2,11 +2,14 @@
 
 Provides the four functions that master_fit expects from any device module:
   get_thomson_data(shot, t_min, t_max)
-  get_Te_sep(shot, time_ms)
+  get_Te_sep(shot, time_ms, inputs=None)
   psinorm_to_rmid(shot, time_ms, psi)
   get_min_errorbars()
 
-Also provides scale_to_tci(shot, times_ms, ne_core), which is C-Mod specific.
+Also provides:
+  load_Te_sep_inputs(shot, eq=None)  optional; lets master_fit load the
+                                     2-point model data once per shot
+  scale_to_tci(shot, times_ms, ne_core)  C-Mod specific
 """
 
 import numpy as np
@@ -46,6 +49,8 @@ def get_thomson_data(shot, t_min, t_max, coordinate='psinorm'):
       te        (N_spatial, N_t)  [eV]
       te_err    (N_spatial, N_t)
       edge_mask (N_spatial,) bool — True for edge TS points
+      eq        eqtools CModEFITTree used for the mapping, returned so it can
+                be reused by the 2-point model instead of being reloaded
     """
     with MDSplus.Tree('CMOD', shot, 'READONLY') as tree:
 
@@ -120,60 +125,132 @@ def get_thomson_data(shot, t_min, t_max, coordinate='psinorm'):
     edge_mask[n_c:] = True
 
     return dict(times_ms=times_ms, psi=psi, ne=ne, ne_err=ne_err,
-                te=te, te_err=te_err, edge_mask=edge_mask)
+                te=te, te_err=te_err, edge_mask=edge_mask, eq=eq)
 
 
 # ---------------------------------------------------------------------------
 # Separatrix Te (2-point model)
 # ---------------------------------------------------------------------------
 
-def get_Te_sep(shot, time_ms):
-    """Brunner-scaling 2-point model for the C-Mod separatrix Te (eV)."""
-    return _two_point_model(shot, time_ms / 1000.0)
+#
+# The 2-point model is evaluated separately for every Thomson time slice, but
+# everything it reads from MDSplus is a whole-shot quantity (time traces and
+# the EFIT equilibrium for all times). The work is therefore split in two:
+#
+#   load_Te_sep_inputs(shot)        -> open the trees and read all traces ONCE
+#   get_Te_sep(shot, time_ms, ...)  -> interpolate to one slice time (~ms)
+#
+# Reading per slice instead costs ~0.75 s per slice (two cmod tree opens, a
+# full EFIT reload and 21 node reads), which dominated the runtime of a fit.
+
+# RF heating efficiency, value suggested by Bonoli. NOTE: may not always be 0.8
+_P_RF_EFFICIENCY = 0.8
 
 
-def _two_point_model(shot, time_s):
+def load_Te_sep_inputs(shot, eq=None):
+    """Read every whole-shot quantity the 2-point model needs, once per shot.
+
+    Parameters
+    ----------
+    shot : C-Mod shot number
+    eq   : optional eqtools CModEFITTree to reuse (e.g. the one returned by
+           get_thomson_data). If None, EFIT20 is loaded, falling back to
+           ANALYSIS, exactly as in get_thomson_data.
+
+    Returns
+    -------
+    dict of (time_s, values) traces plus the equilibrium object. Pass it to
+    get_Te_sep(..., inputs=...) for each time slice.
+    """
     with MDSplus.Tree('cmod', shot, 'READONLY') as tree:
 
-        def _interp(path):
+        def _trace(path):
             node = tree.getNode(path)
-            return float(np.interp(time_s, node.dim_of().data(), node.data()))
+            return node.dim_of().data(), node.data()
 
+        # Radiated power: prefer the foil bolometer, fall back to the diode.
+        # The unit conversion is applied after interpolation (in
+        # _two_point_model) to keep the original order of operations.
         try:
-            P_rad = _interp('\\top.spectroscopy.bolometer:results:foil:main_power') / 1e6
+            P_rad       = _trace('\\top.spectroscopy.bolometer:results:foil:main_power')
+            P_rad_diode = False
         except Exception:
-            P_rad = _interp('\\top.spectroscopy.bolometer:twopi_diode') * 3 * 1000 / 1e6
+            P_rad       = _trace('\\top.spectroscopy.bolometer:twopi_diode')
+            P_rad_diode = True
 
-        P_RF = _interp('\\top.RF.antenna.results:pwr_net_tot')
-        P_oh = float(np.interp(time_s, *_get_P_ohmic(shot)))
+        # dW/dt is a gradient over the whole trace, so compute it once here
+        W_t, W = _trace('\\top.MHD.ANALYSIS.EFIT.RESULTS.A_EQDSK:WPLASM')
+        W      = W / 1e6
 
-        W_node = tree.getNode('\\top.MHD.ANALYSIS.EFIT.RESULTS.A_EQDSK:WPLASM')
-        W_t = W_node.dim_of().data()
-        W   = W_node.data() / 1e6
-        dW_dt = float(np.interp(time_s, W_t, np.gradient(W, W_t)))
+        inputs = dict(
+            P_rad       = P_rad,
+            P_rad_diode = P_rad_diode,
+            P_RF        = _trace('\\top.RF.antenna.results:pwr_net_tot'),
+            P_oh        = _get_P_ohmic(tree),
+            dW_dt       = (W_t, np.gradient(W, W_t)),
+            BTaxis      = _trace('\\top.MHD.magnetics.diamag_coils:btor'),
+            betat       = _trace('\\top.MHD.ANALYSIS.EFIT.RESULTS.A_EQDSK:betat'),
+            q95         = _trace('\\top.MHD.ANALYSIS.EFIT.RESULTS.A_EQDSK:qpsib'),
+        )
 
-        P_RF_efficiency = 0.8 # value suggested by paper by Bonoli. This is the efficiency of the RF heating. NOTE: it may not always be 0.8
-
-
-        Psol = P_RF_efficiency * P_RF + P_oh - dW_dt - P_rad
-        if Psol < 0:
-            print('Psol < 0 — 2pt model unreliable, returning 60 eV')
-            return 60.0
-
-        BTaxis = _interp('\\top.MHD.magnetics.diamag_coils:btor')
-        betat  = _interp('\\top.MHD.ANALYSIS.EFIT.RESULTS.A_EQDSK:betat')
-        p_vol  = (betat / 100) * BTaxis ** 2 / (2.0 * 4.0 * np.pi * 1e-7)
-        q95    = _interp('\\top.MHD.ANALYSIS.EFIT.RESULTS.A_EQDSK:qpsib')
-
+    # Equilibrium for R_LCFS, Bt and Bp at the separatrix
+    if eq is None:
         try:
             eq = eqtools.CModEFIT.CModEFITTree(int(shot), tree='EFIT20')
         except Exception:
             eq = eqtools.CModEFIT.CModEFITTree(int(shot), tree='ANALYSIS')
+    inputs['eq'] = eq
 
+    return inputs
+
+
+def get_Te_sep(shot, time_ms, inputs=None):
+    """Brunner-scaling 2-point model for the C-Mod separatrix Te (eV).
+
+    inputs : output of load_Te_sep_inputs(shot). If None the data is loaded
+             here, which is correct but slow; when calling this for many time
+             slices, load the inputs once and pass them in.
+    """
+    if inputs is None:
+        inputs = load_Te_sep_inputs(shot)
+    return _two_point_model(inputs, time_ms / 1000.0)
+
+
+def _two_point_model(inputs, time_s):
+    """Evaluate the 2-point model at one time using pre-loaded inputs."""
+
+    def _interp(key):
+        t, values = inputs[key]
+        return float(np.interp(time_s, t, values))
+
+    # ---- power crossing the separatrix (MW) ----
+    if inputs['P_rad_diode']:
+        P_rad = _interp('P_rad') * 3 * 1000 / 1e6
+    else:
+        P_rad = _interp('P_rad') / 1e6
+
+    P_RF  = _interp('P_RF')
+    P_oh  = _interp('P_oh')
+    dW_dt = _interp('dW_dt')
+
+    Psol = _P_RF_EFFICIENCY * P_RF + P_oh - dW_dt - P_rad
+    if Psol < 0:
+        print('Psol < 0 — 2pt model unreliable, returning 60 eV')
+        return 60.0
+
+    # ---- volume-averaged pressure and q95 ----
+    BTaxis = _interp('BTaxis')
+    betat  = _interp('betat')
+    p_vol  = (betat / 100) * BTaxis ** 2 / (2.0 * 4.0 * np.pi * 1e-7)
+    q95    = _interp('q95')
+
+    # ---- separatrix geometry and fields from the equilibrium ----
+    eq    = inputs['eq']
     Rlcfs = float(eq.rho2rho('psinorm', 'Rmid', 1, time_s))
     Bt    = abs(float(eq.rz2BT(Rlcfs, 0, time_s)))
     Bp    = abs(float(eq.rz2BZ(Rlcfs, 0, time_s)))
 
+    # ---- 2-point model ----
     lam_q_mm = (0.08 / p_vol) ** 0.5 * 1e3
     L_par    = np.pi * Rlcfs * q95
     q_par    = (0.5 * Psol / (2.0 * np.pi * Rlcfs * lam_q_mm * 1e-3)
@@ -181,16 +258,19 @@ def _two_point_model(shot, time_s):
     return float(((7.0 / 2.0) * q_par * 1e6 * L_par / (2.0 * 2000.0)) ** (2.0 / 7.0))
 
 
-def _get_P_ohmic(shot):
-    with MDSplus.Tree('cmod', shot, 'READONLY') as tree:
-        node   = tree.getNode('\\top.MHD.ANALYSIS.EFIT.RESULTS.G_EQDSK.SSIBRY')
-        t      = node.dim_of(0).data()
-        psi_b  = node.data()
-        vsurf  = np.gradient(smooth(psi_b, 5), t) * 2 * np.pi
-        ip     = np.abs(tree.getNode('\\top.MHD.ANALYSIS.EFIT.RESULTS.A_EQDSK:CPASMA').data())
-        li     = tree.getNode('\\top.MHD.ANALYSIS.EFIT.RESULTS.A_EQDSK:ali').data()
-        L      = li * 2 * np.pi * 67.0 * 1e-9
-        vi     = L * np.gradient(smooth(ip, 2), t)
+def _get_P_ohmic(tree):
+    """Ohmic power trace (MW) from EFIT, read from an already-open cmod tree.
+
+    Returns (time_s, P_ohmic) for the whole shot.
+    """
+    node   = tree.getNode('\\top.MHD.ANALYSIS.EFIT.RESULTS.G_EQDSK.SSIBRY')
+    t      = node.dim_of(0).data()
+    psi_b  = node.data()
+    vsurf  = np.gradient(smooth(psi_b, 5), t) * 2 * np.pi
+    ip     = np.abs(tree.getNode('\\top.MHD.ANALYSIS.EFIT.RESULTS.A_EQDSK:CPASMA').data())
+    li     = tree.getNode('\\top.MHD.ANALYSIS.EFIT.RESULTS.A_EQDSK:ali').data()
+    L      = li * 2 * np.pi * 67.0 * 1e-9
+    vi     = L * np.gradient(smooth(ip, 2), t)
     return t, ip * (vsurf - vi) / 1e6
 
 
