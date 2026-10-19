@@ -679,6 +679,7 @@ def _fit_one_profile(psi, values, errors,
         ax.grid(ls='--', alpha=0.3)
         plt.tight_layout()
         plt.show()
+        plt.close(fig)   # free the figure; otherwise every fit's figure stays in memory
 
     # if enforce_mtanh is True and the fit has succeeed, we can return immediately here
     if enforce_mtanh:
@@ -774,3 +775,4 @@ def _plot_fit(psi_grid, psi_raw, values_raw, errors_raw,
     ax.grid(linestyle='--', alpha=0.3)
     plt.tight_layout()
     plt.show()
+    plt.close(fig)   # free the figure; otherwise every fit's figure stays in memory
