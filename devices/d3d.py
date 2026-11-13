@@ -2,7 +2,7 @@
 
 Provides the four functions that master_fit expects from any device module:
   get_thomson_data(shot, t_min, t_max)
-  get_Te_sep(shot, time_ms)
+  get_Te_sep(shot, time_ms, inputs=None)
   psinorm_to_rmid(shot, time_ms, psi)
   get_min_errorbars()
 
@@ -117,8 +117,12 @@ def get_thomson_data(shot, t_min, t_max, coordinate='psinorm'):
 # Separatrix Te (2-point model, Leonard 2017 lambda_q scaling)
 # ---------------------------------------------------------------------------
 
-def get_Te_sep(shot, time_ms):
-    """Leonard-2017 lambda_q 2-point model for the DIII-D separatrix Te (eV)."""
+def get_Te_sep(shot, time_ms, inputs=None):
+    """Leonard-2017 lambda_q 2-point model for the DIII-D separatrix Te (eV).
+
+    inputs : accepted for interface compatibility with master_fit and ignored;
+             DIII-D loads its own equilibrium and power traces here.
+    """
     time_ms = int(round(time_ms))
     eq      = _load_equilibrium(shot, time_ms)
     t       = time_ms   # EqdskReader ignores this but the API requires it

@@ -154,6 +154,20 @@ def master_fit(
         n_core = int(np.sum(~edge_mask))
         ne_all[:n_core, :] = dev.scale_to_tci(shot, times_ms, ne_all[:n_core, :])
 
+    # ---- 2-point model inputs (loaded once per shot) ----
+    # The 2-pt model is still evaluated for every time slice, but the MDSplus
+    # data behind it covers the whole shot, so it is read here once and reused.
+    # The equilibrium from get_thomson_data is passed along so it is not
+    # rebuilt. Devices without load_Te_sep_inputs (e.g. DIII-D) load their own
+    # data inside get_Te_sep, as before.
+    te_sep_inputs = None
+    if shift_to_2pt_model and hasattr(dev, 'load_Te_sep_inputs'):
+        try:
+            te_sep_inputs = dev.load_Te_sep_inputs(shot, eq=data.get('eq'))
+        except Exception as exc:
+            # fall back to per-slice loading, which reports its own errors
+            print(f'  2pt model inputs could not be preloaded: {exc}')
+
     # ---- clean each time slice ----
     slices = []
     for t_idx, time_ms in enumerate(times_ms):
@@ -241,8 +255,8 @@ def master_fit(
         psi_grid=psi_grid, fit_func=fit_func, n_params=n_params,
         enforce_mtanh=enforce_mtanh, use_edge_chi_squared=use_edge_chi_squared,
         set_te_floor=set_te_floor, set_ne_floor=set_ne_floor,
-        shift_to_2pt_model=shift_to_2pt_model, dev=dev, shot=shot,
-        plot=plot, debug_plot=debug_plot,
+        shift_to_2pt_model=shift_to_2pt_model, te_sep_inputs=te_sep_inputs,
+        dev=dev, shot=shot, plot=plot, debug_plot=debug_plot,
         return_raw_data=return_raw_data, return_errorbars=return_errorbars,
         edge_thresh=edge_thresh,
     )
@@ -263,7 +277,7 @@ def _fit_per_slice(slices, psi_grid, fit_func, n_params, enforce_mtanh,
                    use_edge_chi_squared, set_te_floor, set_ne_floor,
                    shift_to_2pt_model, dev, shot,
                    plot, debug_plot, return_raw_data, return_errorbars,
-                   edge_thresh=0.8):
+                   edge_thresh=0.8, te_sep_inputs=None):
 
     te_times, te_profiles, te_chisq, te_types = [], [], [], []
     ne_times, ne_profiles, ne_chisq, ne_types = [], [], [], []
@@ -303,7 +317,7 @@ def _fit_per_slice(slices, psi_grid, fit_func, n_params, enforce_mtanh,
         shift = 0.0
         if shift_to_2pt_model and te_profile is not None:
             try:
-                te_sep = dev.get_Te_sep(shot, time_ms)
+                te_sep = dev.get_Te_sep(shot, time_ms, inputs=te_sep_inputs)
                 # only_edge=False: original shifts entire psi grid (the
                 # only_shift_edge branch is dead code in the original's
                 # apply_2pt_shift — the last line always shifts everything)
@@ -379,7 +393,7 @@ def _fit_per_slice(slices, psi_grid, fit_func, n_params, enforce_mtanh,
 # Time-window mode
 # ---------------------------------------------------------------------------
 
-def _align_slice_psi(sl, dev, shot, edge_thresh=0.8):
+def _align_slice_psi(sl, dev, shot, edge_thresh=0.8, te_sep_inputs=None):
     """Shift outer psi (> edge_thresh) of a slice to align its pedestal with the 2pt model.
 
     Matches the original repo's get_twopt_shift_from_edge_Te_fit logic:
@@ -430,7 +444,7 @@ def _align_slice_psi(sl, dev, shot, edge_thresh=0.8):
         return sl, 0.0
 
     try:
-        te_sep = dev.get_Te_sep(shot, time_ms)
+        te_sep = dev.get_Te_sep(shot, time_ms, inputs=te_sep_inputs)
     except Exception:
         return sl, 0.0
 
@@ -455,7 +469,7 @@ def _fit_time_window(slices, psi_grid, fit_func, n_params, enforce_mtanh,
                      use_edge_chi_squared, set_te_floor, set_ne_floor,
                      shift_to_2pt_model, dev, shot,
                      plot, debug_plot, return_raw_data, return_errorbars,
-                     edge_thresh=0.8):
+                     edge_thresh=0.8, te_sep_inputs=None):
 
     # When shift_to_2pt_model is requested, align each slice individually
     # before pooling so the pedestal sits at a consistent psi position.
@@ -465,7 +479,8 @@ def _fit_time_window(slices, psi_grid, fit_func, n_params, enforce_mtanh,
     slice_shifts   = []
     for sl in slices:
         if shift_to_2pt_model:
-            sl, s = _align_slice_psi(sl, dev, shot, edge_thresh=edge_thresh)
+            sl, s = _align_slice_psi(sl, dev, shot, edge_thresh=edge_thresh,
+                                     te_sep_inputs=te_sep_inputs)
             slice_shifts.append(s)
         aligned_slices.append(sl)
     mean_psi_shift = float(np.mean(slice_shifts)) if slice_shifts else 0.0
@@ -664,6 +679,7 @@ def _fit_one_profile(psi, values, errors,
         ax.grid(ls='--', alpha=0.3)
         plt.tight_layout()
         plt.show()
+        plt.close(fig)   # free the figure; otherwise every fit's figure stays in memory
 
     # if enforce_mtanh is True and the fit has succeeed, we can return immediately here
     if enforce_mtanh:
@@ -759,3 +775,4 @@ def _plot_fit(psi_grid, psi_raw, values_raw, errors_raw,
     ax.grid(linestyle='--', alpha=0.3)
     plt.tight_layout()
     plt.show()
+    plt.close(fig)   # free the figure; otherwise every fit's figure stays in memory
