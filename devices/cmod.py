@@ -404,7 +404,7 @@ def _integrate_ts_to_tci(shot, tmin, tmax, nl_num=4):
 
 def _map_ts_to_tci(shot, tmin, tmax, nl_num=4):
     with MDSplus.Tree('electrons', shot, 'READONLY') as electrons:
-        analysis  = MDSplus.Tree('analysis', shoti, 'READONLY')
+        analysis  = MDSplus.Tree('analysis', shot, 'READONLY')
         psi_a_t   = analysis.getNode('\\efit_aeqdsk:sibdry').dim_of(0).data()
         t1, t2    = np.min(psi_a_t), np.max(psi_a_t)
 
