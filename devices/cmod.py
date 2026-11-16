@@ -483,8 +483,9 @@ def _parse_yags(shot):
         except Exception:
             n2 = 0
 
-    dark    = int(electrons.getNode('\\n_dark_prior').data())
-    n_total = int(electrons.getNode('\\n_total').data())
+        dark    = int(electrons.getNode('\\n_dark_prior').data())
+        n_total = int(electrons.getNode('\\n_total').data())
+
     n_t     = n_total - dark
 
     if n1 == 0 and n2 == 0:
