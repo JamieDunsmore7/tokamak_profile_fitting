@@ -62,13 +62,6 @@ def get_thomson_data(shot, t_min, t_max, coordinate='psinorm'):
         rmid_e   = tree.getNode('\\TOP.ELECTRONS.YAG_EDGETS.RESULTS:RMID').data()
         t_raw    = tree.getNode('\\TOP.ELECTRONS.YAG_EDGETS.RESULTS:NE').dim_of().data()
 
-        times_ms = np.round(t_raw * 1000).astype(int)
-        mask     = (times_ms > t_min) & (times_ms < t_max)
-        times_ms = times_ms[mask]
-        te_e, te_err_e = te_e[:, mask],  te_err_e[:, mask]
-        ne_e, ne_err_e = ne_e[:, mask],  ne_err_e[:, mask]
-        rmid_e         = rmid_e[:, mask]
-
         # core Thomson
         if shot > 1020000000:
             te_c     = tree.getNode('\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:TE_RZ').data() * 1000
@@ -84,6 +77,29 @@ def get_thomson_data(shot, t_min, t_max, coordinate='psinorm'):
             ne_err_c = tree.getNode('\\TOP.ELECTRONS.YAG.RESULTS.GLOBAL.PROFILE:NE_ERR_ZT').data()
             rmid_c   = tree.getNode('\\TOP.ELECTRONS.YAG.RESULTS.GLOBAL.PROFILE:R_MID_T').data()
             t_core   = tree.getNode('\\TOP.ELECTRONS.YAG.RESULTS.GLOBAL.PROFILE:NE_RZ_T').dim_of().data()
+
+    # Edge RMID sometimes has fewer time columns than the time base (e.g. 74 vs 75
+    # for 1000601019). If so, pad it with -1 so its real values line up with the
+    # core's, as long as both have the same number of non -1 times.
+    n_t = len(t_raw)
+    if rmid_e.shape[1] > n_t:
+        raise ValueError(f'Edge RMID has {rmid_e.shape[1]} time columns, more than the {n_t} in the time base.')
+    if rmid_e.shape[1] < n_t:
+        valid_e = np.any(rmid_e != -1, axis=0)
+        valid_c = np.any(rmid_c != -1, axis=0)
+        if rmid_c.shape[1] != n_t or valid_e.sum() != valid_c.sum():
+            raise ValueError(f'Edge RMID has {rmid_e.shape[1]} time columns, expected {n_t}, '
+                             'and it cannot be lined up with the core.')
+        padded = np.full((rmid_e.shape[0], n_t), -1.0)
+        padded[:, valid_c] = rmid_e[:, valid_e]
+        rmid_e = padded
+
+    times_ms = np.round(t_raw * 1000).astype(int)
+    mask     = (times_ms > t_min) & (times_ms < t_max)
+    times_ms = times_ms[mask]
+    te_e, te_err_e = te_e[:, mask],  te_err_e[:, mask]
+    ne_e, ne_err_e = ne_e[:, mask],  ne_err_e[:, mask]
+    rmid_e         = rmid_e[:, mask]
 
     core_times_ms = np.round(t_core * 1000).astype(int)
     core_mask     = (core_times_ms > t_min) & (core_times_ms < t_max)
