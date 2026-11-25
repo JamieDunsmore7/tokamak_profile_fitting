@@ -62,14 +62,33 @@ def get_thomson_data(shot, t_min, t_max, coordinate='psinorm'):
         rmid_e   = tree.getNode('\\TOP.ELECTRONS.YAG_EDGETS.RESULTS:RMID').data()
         t_raw    = tree.getNode('\\TOP.ELECTRONS.YAG_EDGETS.RESULTS:NE').dim_of().data()
 
+        # print(len(tree.getNode('\\TOP.ELECTRONS.YAG_EDGETS.RESULTS:NE').dim_of().data()))
+        # print(len(tree.getNode('\\TOP.ELECTRONS.YAG_EDGETS.RESULTS:RMID').dim_of().data()))
+        # print(len(tree.getNode('\\TOP.ELECTRONS.YAG_EDGETS.RESULTS:TE').dim_of().data()))
+        # print(len(tree.getNode('\\TOP.ELECTRONS.YAG_EDGETS.RESULTS:TE:ERROR').dim_of().data()))
+
         # core Thomson
         if shot > 1020000000:
-            te_c     = tree.getNode('\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:TE_RZ').data() * 1000
-            te_err_c = tree.getNode('\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:TE_ERR').data() * 1000
-            ne_c     = tree.getNode('\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:NE_RZ').data()
-            ne_err_c = tree.getNode('\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:NE_ERR').data()
-            rmid_c   = tree.getNode('\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:R_MID_T').data()
-            t_core   = tree.getNode('\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:NE_RZ').dim_of().data()
+            try:
+                te_c     = tree.getNode('\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:TE_RZ').data() * 1000
+                te_err_c = tree.getNode('\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:TE_ERR').data() * 1000
+                ne_c     = tree.getNode('\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:NE_RZ').data()
+                ne_err_c = tree.getNode('\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:NE_ERR').data()
+                rmid_c   = tree.getNode('\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:R_MID_T').data()
+                t_core   = tree.getNode('\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:NE_RZ').dim_of().data()
+
+                # print(len(tree.getNode('\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:NE_RZ').dim_of().data()))
+                # print(len(tree.getNode('\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:R_MID_T').dim_of().data()))
+                # print(len(tree.getNode('\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:TE_RZ').dim_of().data()))
+                # print(len(tree.getNode('\\TOP.ELECTRONS.YAG_NEW.RESULTS.PROFILES:TE_ERR').dim_of().data()))
+            except:
+                print("Could not find YAG_NEW, reverting to YAG")
+                te_c     = tree.getNode('\\TOP.ELECTRONS.YAG.RESULTS.GLOBAL.PROFILE:TE_RZ_T').data() * 1000
+                te_err_c = tree.getNode('\\TOP.ELECTRONS.YAG.RESULTS.GLOBAL.PROFILE:TE_ERR_ZT').data() * 1000
+                ne_c     = tree.getNode('\\TOP.ELECTRONS.YAG.RESULTS.GLOBAL.PROFILE:NE_RZ_T').data()
+                ne_err_c = tree.getNode('\\TOP.ELECTRONS.YAG.RESULTS.GLOBAL.PROFILE:NE_ERR_ZT').data()
+                rmid_c   = tree.getNode('\\TOP.ELECTRONS.YAG.RESULTS.GLOBAL.PROFILE:R_MID_T').data()
+                t_core   = tree.getNode('\\TOP.ELECTRONS.YAG.RESULTS.GLOBAL.PROFILE:NE_RZ_T').dim_of().data()
         else:
             te_c     = tree.getNode('\\TOP.ELECTRONS.YAG.RESULTS.GLOBAL.PROFILE:TE_RZ_T').data() * 1000
             te_err_c = tree.getNode('\\TOP.ELECTRONS.YAG.RESULTS.GLOBAL.PROFILE:TE_ERR_ZT').data() * 1000
@@ -82,7 +101,27 @@ def get_thomson_data(shot, t_min, t_max, coordinate='psinorm'):
     # for 1000601019). If so, pad it with -1 so its real values line up with the
     # core's, as long as both have the same number of non -1 times.
     n_t = len(t_raw)
+    n_t_c = len(t_core)
     if rmid_e.shape[1] > n_t:
+        # # print(rmid_e[0])
+        # # print(rmid_c[0])
+        # # print(t_raw)
+        # # print(t_core)
+
+        # valid_e = np.any(rmid_e != -1, axis=0)
+        # valid_c = np.any(rmid_c != -1, axis=0)
+        # check_time_match = all(np.array(t_raw)  == np.array(t_core[0:n_t]))
+        # negative_locs_e = np.array(rmid_e) == -1
+        # negative_locs_c = np.array(rmid_c) == -1
+        # negative_locs_match = np.all(negative_locs_e[0] == negative_locs_c[0])
+        
+        # if check_time_match and negative_locs_match and n_t < n_t_c:
+        #     print("More core thomson time columns than edge thomson time columns. Adjusting arrays accordingly and checking that fit time window is whithin the range of edge thomson time.")
+        #     rmid_e_short = rmid_e[:, 0:n_t]  
+        #     rmid_e = rmid_e_short
+        # else:
+        #     raise ValueError(f'Edge RMID has {rmid_e.shape[1]} time columns, expected {n_t}, and it cannot be lined up with the core.')
+
         raise ValueError(f'Edge RMID has {rmid_e.shape[1]} time columns, more than the {n_t} in the time base.')
     if rmid_e.shape[1] < n_t:
         valid_e = np.any(rmid_e != -1, axis=0)
